@@ -2,6 +2,7 @@ services:
   iplookup:
     image: nettools-iplookup:latest
     pull_policy: never
+    env_file: .env
     ports:
       - "3621:3621"
     environment:
@@ -23,6 +24,7 @@ services:
   geoip-updater:
     image: nettools-iplookup:latest
     pull_policy: never
+    env_file: .env
     command: ["node", "scripts/update-maxmind.js", "--loop"]
     environment:
       GEOIP_DB_DIR: /data/geoip
