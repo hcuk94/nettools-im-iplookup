@@ -78,6 +78,16 @@ app.use((err, req, res, _next) => {
   // CORS middleware throws a generic Error.
   if (err?.message === 'Not allowed by CORS') status = 403;
 
+  // Log full error server-side for debugging (keeps client response generic)
+  // eslint-disable-next-line no-console
+  console.error('[error]', {
+    path: req.path,
+    status,
+    message: err?.message,
+    stack: err?.stack,
+    body: err?.body
+  });
+
   const message = status === 500 ? 'Internal Server Error' : err.message;
   res.status(status).json({
     error: status === 500 ? 'internal_error' : 'request_failed',
