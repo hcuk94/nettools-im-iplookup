@@ -1,0 +1,27 @@
+{
+  "name": "nettools-im-iplookup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "NODE_ENV=development node --watch src/server.js",
+    "geoip:update": "node scripts/update-maxmind.js",
+    "geoip:update:loop": "node scripts/update-maxmind.js --loop",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "maxmind": "^4.0.0",
+    "morgan": "^1.10.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^9.5.0",
+    "globals": "^15.3.0"
+  }
+}
