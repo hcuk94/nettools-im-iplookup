@@ -4,9 +4,9 @@ import morgan from 'morgan';
 
 import { getConfig } from './config.js';
 import { openDb } from './db.js';
-import { parseIp } from './ip.js';
+import { parseIp, isNonPublicIp } from './ip.js';
 import { getRdapCached } from './rdap.js';
-import { rateLimitDaily } from './rateLimit.js';
+import { getRateLimitState, incrementRateLimit } from './rateLimit.js';
 import { openGeoIpReaders, lookupGeo } from './geoip.js';
 
 const cfg = getConfig();
@@ -40,16 +40,44 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/lookup', rateLimitDaily({ db, limit: cfg.RATE_LIMIT_DAILY }), async (req, res, next) => {
+app.get('/lookup', async (req, res, next) => {
   try {
     const ip = parseIp(req.query.ip);
 
-    const rdapResult = await getRdapCached({
-      db,
-      ip,
-      ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS,
-      baseUrl: cfg.RDAP_BASE_URL
-    });
+    // Rate limit should only count "live" external lookups.
+    const client = req.ip || 'unknown';
+    const state = await getRateLimitState({ db, client, limit: cfg.RATE_LIMIT_DAILY });
+    if (state.current >= state.limit) {
+      res.status(429).json({
+        error: 'rate_limited',
+        message: `Daily rate limit exceeded (${state.limit}/day).`,
+        limit: state.limit,
+        remaining: 0,
+        resetDay: state.day
+      });
+      return;
+    }
+
+    let rdapResult = { source: 'skipped', rdap: null, fetchedAt: null };
+    if (!isNonPublicIp(ip)) {
+      rdapResult = await getRdapCached({
+        db,
+        ip,
+        ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS,
+        baseUrl: cfg.RDAP_BASE_URL
+      });
+    }
+
+    // Only count against rate limit when we actually hit RDAP live.
+    const shouldCount = rdapResult.source === 'live';
+    let current = state.current;
+    if (shouldCount) {
+      current = await incrementRateLimit({ db, client, day: state.day });
+    }
+
+    res.setHeader('X-RateLimit-Limit', String(state.limit));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, state.limit - current)));
+    res.setHeader('X-RateLimit-Reset', state.day);
 
     const geo = lookupGeo({ readers: geoReaders, ip });
 
