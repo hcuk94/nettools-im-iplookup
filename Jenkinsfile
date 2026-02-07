@@ -95,6 +95,8 @@ cd "$DEPLOY_APPDIR"
 echo "==> Loading Docker image"
 docker load < "${IMAGE_NAME}-${IMAGE_TAG}.tar"
 rm "${IMAGE_NAME}-${IMAGE_TAG}.tar"
+echo "==> Tagging image as latest"
+docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:latest"
 
 echo "==> Pulling latest code"
 git fetch --prune
