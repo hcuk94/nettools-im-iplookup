@@ -4,6 +4,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { ProxyAgent } from 'undici';
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
@@ -15,8 +16,44 @@ function mustEnv(name) {
   return v;
 }
 
+function parseNoProxy() {
+  const raw = process.env.NO_PROXY || process.env.no_proxy || '';
+  return raw
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function hostMatchesNoProxy(host, noProxyList) {
+  if (!host) return false;
+  // NO_PROXY entries can be exact hosts, domains (.example.com), or '*' 
+  return noProxyList.some(entry => {
+    if (entry === '*') return true;
+    if (entry.startsWith('.')) return host.endsWith(entry);
+    return host === entry;
+  });
+}
+
+function proxyForUrl(urlStr) {
+  const u = new URL(urlStr);
+  const noProxy = parseNoProxy();
+  if (hostMatchesNoProxy(u.hostname, noProxy)) return null;
+
+  // Prefer protocol-specific proxy env vars, supporting both cases
+  if (u.protocol === 'https:') {
+    return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  if (u.protocol === 'http:') {
+    return process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  return null;
+}
+
 async function downloadToFile(url, outPath) {
-  const res = await fetch(url);
+  const proxy = proxyForUrl(url);
+  const dispatcher = proxy ? new ProxyAgent(proxy) : undefined;
+
+  const res = await fetch(url, dispatcher ? { dispatcher } : undefined);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Download failed (${res.status}): ${body.slice(0, 300)}`);
