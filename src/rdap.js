@@ -61,13 +61,20 @@ export async function fetchRdap({ ip, baseUrl, signal }) {
   return json;
 }
 
-export async function getRdapCached({ db, ip, ttlSeconds, baseUrl, nowMs = Date.now() }) {
+export async function getRdapCacheOnly({ db, ip, ttlSeconds, nowMs = Date.now() }) {
   const row = await db.get('SELECT response_json, fetched_at FROM rdap_cache WHERE ip = ?', ip);
-  if (row) {
-    const ageSeconds = (nowMs - row.fetched_at) / 1000;
-    if (ageSeconds <= ttlSeconds) {
-      return { source: 'cache', rdap: JSON.parse(row.response_json), fetchedAt: row.fetched_at };
-    }
+  if (!row) return { hit: false };
+
+  const ageSeconds = (nowMs - row.fetched_at) / 1000;
+  if (ageSeconds > ttlSeconds) return { hit: false };
+
+  return { hit: true, rdap: JSON.parse(row.response_json), fetchedAt: row.fetched_at };
+}
+
+export async function getRdapCached({ db, ip, ttlSeconds, baseUrl, nowMs = Date.now() }) {
+  const cached = await getRdapCacheOnly({ db, ip, ttlSeconds, nowMs });
+  if (cached.hit) {
+    return { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt };
   }
 
   const rdap = await fetchRdap({ ip, baseUrl });

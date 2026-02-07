@@ -28,37 +28,43 @@ function inCidrV4(parts, baseParts, prefix) {
   return (ipInt & mask) === (baseInt & mask);
 }
 
-export function isNonPublicIp(ip) {
+export function classifyIp(ip) {
+  // Returns { public: boolean, kind?: string }
   if (ip.includes('.')) {
     const p = parseV4(ip);
-    if (!p) return true;
+    if (!p) return { public: false, kind: 'invalid' };
 
-    // RFC1918 + other non-public ranges
-    const ranges = [
-      [[10,0,0,0], 8],
-      [[172,16,0,0], 12],
-      [[192,168,0,0], 16],
-      [[127,0,0,0], 8],          // loopback
-      [[169,254,0,0], 16],       // link-local
-      [[100,64,0,0], 10],        // CGNAT
-      [[0,0,0,0], 8],            // "this" network
-      [[192,0,2,0], 24],         // TEST-NET-1
-      [[198,51,100,0], 24],      // TEST-NET-2
-      [[203,0,113,0], 24],       // TEST-NET-3
-      [[224,0,0,0], 4]           // multicast
+    const checks = [
+      { kind: 'internal_rfc1918', base: [10, 0, 0, 0], prefix: 8 },
+      { kind: 'internal_rfc1918', base: [172, 16, 0, 0], prefix: 12 },
+      { kind: 'internal_rfc1918', base: [192, 168, 0, 0], prefix: 16 },
+      { kind: 'loopback', base: [127, 0, 0, 0], prefix: 8 },
+      { kind: 'link_local', base: [169, 254, 0, 0], prefix: 16 },
+      { kind: 'cgnat', base: [100, 64, 0, 0], prefix: 10 },
+      { kind: 'this_network', base: [0, 0, 0, 0], prefix: 8 },
+      { kind: 'documentation', base: [192, 0, 2, 0], prefix: 24 },
+      { kind: 'documentation', base: [198, 51, 100, 0], prefix: 24 },
+      { kind: 'documentation', base: [203, 0, 113, 0], prefix: 24 },
+      { kind: 'multicast', base: [224, 0, 0, 0], prefix: 4 }
     ];
 
-    return ranges.some(([b, pre]) => inCidrV4(p, b, pre));
+    for (const c of checks) {
+      if (inCidrV4(p, c.base, c.prefix)) return { public: false, kind: c.kind };
+    }
+
+    return { public: true };
   }
 
-  // IPv6 checks (string-prefix based; good enough for skipping RDAP)
   const s = ip.toLowerCase();
-  return (
-    s === '::' ||
-    s === '::1' ||
-    s.startsWith('fe80:') ||            // link-local
-    s.startsWith('fc') || s.startsWith('fd') || // unique local fc00::/7
-    s.startsWith('ff') ||               // multicast
-    s.startsWith('2001:db8:')           // documentation
-  );
+  if (s === '::' || s === '::1') return { public: false, kind: 'loopback' };
+  if (s.startsWith('fe80:')) return { public: false, kind: 'link_local' };
+  if (s.startsWith('fc') || s.startsWith('fd')) return { public: false, kind: 'internal_ula' };
+  if (s.startsWith('ff')) return { public: false, kind: 'multicast' };
+  if (s.startsWith('2001:db8:')) return { public: false, kind: 'documentation' };
+
+  return { public: true };
+}
+
+export function isNonPublicIp(ip) {
+  return !classifyIp(ip).public;
 }

@@ -4,8 +4,8 @@ import morgan from 'morgan';
 
 import { getConfig } from './config.js';
 import { openDb } from './db.js';
-import { parseIp, isNonPublicIp } from './ip.js';
-import { getRdapCached } from './rdap.js';
+import { parseIp, classifyIp } from './ip.js';
+import { getRdapCached, getRdapCacheOnly } from './rdap.js';
 import { getRateLimitState, incrementRateLimit } from './rateLimit.js';
 import { openGeoIpReaders, lookupGeo } from './geoip.js';
 
@@ -57,45 +57,59 @@ app.get('/lookup', async (req, res, next) => {
       throw err;
     }
 
-    // Rate limit should only count "live" external lookups.
+    const ipClass = classifyIp(ip);
+
+    // Decide RDAP strategy BEFORE enforcing rate limit:
+    // - Non-public IPs: skip RDAP entirely
+    // - Cached RDAP (within TTL): return cache without counting or blocking
+    // - Otherwise: enforce rate limit, then fetch live and count
+
     const client = req.ip || 'unknown';
     const state = await getRateLimitState({ db, client, limit: cfg.RATE_LIMIT_DAILY });
-    if (state.current >= state.limit) {
-      res.status(429).json({
-        error: 'rate_limited',
-        message: `Daily rate limit exceeded (${state.limit}/day).`,
-        limit: state.limit,
-        remaining: 0,
-        resetDay: state.day
-      });
-      return;
-    }
 
     let rdapResult = { source: 'skipped', rdap: null, fetchedAt: null };
-    if (!isNonPublicIp(ip)) {
-      rdapResult = await getRdapCached({
-        db,
-        ip,
-        ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS,
-        baseUrl: cfg.RDAP_BASE_URL
-      });
+
+    if (ipClass.public) {
+      const cached = await getRdapCacheOnly({ db, ip, ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS });
+      if (cached.hit) {
+        rdapResult = { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt };
+      } else {
+        if (state.current >= state.limit) {
+          res.status(429).json({
+            error: 'rate_limited',
+            message: `Daily rate limit exceeded (${state.limit}/day).`,
+            limit: state.limit,
+            remaining: 0,
+            resetDay: state.day
+          });
+          return;
+        }
+
+        rdapResult = await getRdapCached({
+          db,
+          ip,
+          ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS,
+          baseUrl: cfg.RDAP_BASE_URL
+        });
+
+        // Only count against rate limit when we actually hit RDAP live.
+        if (rdapResult.source === 'live') {
+          await incrementRateLimit({ db, client, day: state.day });
+        }
+      }
     }
 
-    // Only count against rate limit when we actually hit RDAP live.
-    const shouldCount = rdapResult.source === 'live';
-    let current = state.current;
-    if (shouldCount) {
-      current = await incrementRateLimit({ db, client, day: state.day });
-    }
-
-    res.setHeader('X-RateLimit-Limit', String(state.limit));
-    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, state.limit - current)));
-    res.setHeader('X-RateLimit-Reset', state.day);
+    // Recompute state after potential increment
+    const state2 = await getRateLimitState({ db, client, limit: cfg.RATE_LIMIT_DAILY });
+    res.setHeader('X-RateLimit-Limit', String(state2.limit));
+    res.setHeader('X-RateLimit-Remaining', String(state2.remaining));
+    res.setHeader('X-RateLimit-Reset', state2.day);
 
     const geo = lookupGeo({ readers: geoReaders, ip });
 
     res.json({
       ip,
+      ipClassification: ipClass,
       rdap: rdapResult.rdap,
       rdapSource: rdapResult.source,
       rdapFetchedAt: rdapResult.fetchedAt,
