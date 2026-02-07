@@ -1,0 +1,32 @@
+services:
+  iplookup-sg:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      TRUST_PROXY: "true"
+      CORS_ALLOWLIST: "https://nettools.im,https://www.nettools.im"
+      RATE_LIMIT_DAILY: 24
+      SQLITE_PATH: /data/app.sqlite
+      RDAP_CACHE_TTL_SECONDS: 86400
+      RDAP_BASE_URL: "https://rdap.org/ip/"
+      GEOIP_DB_DIR: /data/geoip
+      GEOIP_CITY_MMDB: GeoLite2-City.mmdb
+      GEOIP_ASN_MMDB: GeoLite2-ASN.mmdb
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  geoip-updater-sg:
+    build: .
+    command: ["node", "scripts/update-maxmind.js", "--loop"]
+    environment:
+      GEOIP_DB_DIR: /data/geoip
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY}
+      MAXMIND_EDITION_IDS: "GeoLite2-City,GeoLite2-ASN"
+      MAXMIND_UPDATE_INTERVAL_SECONDS: 86400
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
