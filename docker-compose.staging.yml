@@ -1,6 +1,6 @@
 services:
   iplookup-sg:
-    build: .
+    image: nettools-iplookup:latest
     ports:
       - "3000:3000"
     environment:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   geoip-updater-sg:
-    build: .
+    image: nettools-iplookup:latest
     command: ["node", "scripts/update-maxmind.js", "--loop"]
     environment:
       GEOIP_DB_DIR: /data/geoip
