@@ -75,15 +75,42 @@ pipeline {
             // Prefer username from SSH credential if provided; else fall back to SSH_USER env var
             def sshUser = (env.SSH_USER_FROM_CRED?.trim()) ? env.SSH_USER_FROM_CRED : env.SSH_USER
 
-            sh """
-              set -euo pipefail
-              echo "Deploying branch '${env.BRANCH_NAME}' to ${isProd ? 'PRODUCTION' : 'STAGING'}: ${SERVER_NAME}:${APP_DIR}"
+            // Export vars for the shell step using withEnv (avoids credential exposure warnings)
+            withEnv([
+              "DEPLOY_BRANCH=${env.BRANCH_NAME}",
+              "DEPLOY_APP_DIR=${env.APP_DIR}",
+              "DEPLOY_COMPOSE_FILE=${composeFile}",
+              "DEPLOY_SERVER=${env.SERVER_NAME}",
+              "DEPLOY_SSH_USER=${sshUser}",
+              "DEPLOY_SSH_KEY=${env.SSH_KEY}"
+            ]) {
+              sh '''
+                set -euo pipefail
+                echo "Deploying branch '${DEPLOY_BRANCH}' to ''' + (isProd ? 'PRODUCTION' : 'STAGING') + ''': ${DEPLOY_SERVER}:${DEPLOY_APP_DIR}"
 
-              ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${sshUser}@${SERVER_NAME}" \\
-                'BRANCH="${env.BRANCH_NAME}" APP_DIR="${APP_DIR}" COMPOSE_FILE="${composeFile}" bash -s' <<'REMOTE'
-${remoteScript}
+                ssh -i "${DEPLOY_SSH_KEY}" -o StrictHostKeyChecking=no "${DEPLOY_SSH_USER}@${DEPLOY_SERVER}" \
+                  'BRANCH="'"${DEPLOY_BRANCH}"'" APP_DIR="'"${DEPLOY_APP_DIR}"'" COMPOSE_FILE="'"${DEPLOY_COMPOSE_FILE}"'" bash -s' <<'REMOTE'
+set -euo pipefail
+cd "$APP_DIR"
+echo "==> Pulling latest code for branch: $BRANCH"
+git fetch --prune
+git checkout "$BRANCH"
+git reset --hard "origin/$BRANCH"
+echo "==> Rebuilding and restarting containers using $COMPOSE_FILE"
+if docker compose version >/dev/null 2>&1; then
+  docker compose -f "$COMPOSE_FILE" pull || true
+  docker compose -f "$COMPOSE_FILE" build --pull
+  docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+else
+  docker-compose -f "$COMPOSE_FILE" pull || true
+  docker-compose -f "$COMPOSE_FILE" build --pull
+  docker-compose -f "$COMPOSE_FILE" up -d --remove-orphans
+fi
+echo "==> Pruning unused images (safe-ish cleanup)"
+docker image prune -f || true
 REMOTE
-            """
+              '''
+            }
           }
         }
       }
