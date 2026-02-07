@@ -3,7 +3,7 @@ services:
     image: nettools-iplookup:latest
     pull_policy: never
     ports:
-      - "3000:3000"
+      - "3621:3621"
     environment:
       PORT: 3000
       HOST: 0.0.0.0
