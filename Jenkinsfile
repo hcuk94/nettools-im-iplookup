@@ -1,5 +1,7 @@
 pipeline {
-  agent any
+  agent { 
+        label 'docker-agent-docker'
+    } 
 
   options {
     disableConcurrentBuilds()
