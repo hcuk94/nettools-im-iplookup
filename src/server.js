@@ -23,7 +23,9 @@ app.use(
       if (!origin) return callback(null, true);
       if (allowlist.has(origin)) return callback(null, true);
       return callback(new Error('Not allowed by CORS'));
-    }
+    },
+    // Allow frontend to read rate limit headers
+    exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']
   })
 );
 
@@ -40,9 +42,20 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/me', (req, res) => {
+  // Helpful for the frontend to prefill the user's current IP.
+  res.json({ ip: req.ip || null });
+});
+
 app.get('/lookup', async (req, res, next) => {
   try {
-    const ip = parseIp(req.query.ip);
+    // If no ip provided, look up the caller.
+    const ip = req.query.ip ? parseIp(req.query.ip) : (req.ip || '');
+    if (!ip) {
+      const err = new Error('Missing IP address');
+      err.status = 400;
+      throw err;
+    }
 
     // Rate limit should only count "live" external lookups.
     const client = req.ip || 'unknown';
