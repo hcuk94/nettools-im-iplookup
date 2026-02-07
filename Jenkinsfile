@@ -36,8 +36,10 @@ pipeline {
           def serverCred = isProd ? env.PROD_SERVER_CRED : env.STAGING_SERVER_CRED
           def appDirCred = isProd ? env.PROD_APPDIR_CRED : env.STAGING_APPDIR_CRED
 
+          // Compose file selection: staging uses docker-compose.staging.yml
+          def composeFile = isProd ? 'docker-compose.yml' : 'docker-compose.staging.yml'
+
           // Compose command: try v2 ("docker compose") then fall back to v1 ("docker-compose")
-          // You can also swap in different compose files per branch if needed.
           def remoteScript = """
             set -euo pipefail
 
@@ -49,15 +51,15 @@ pipeline {
             git checkout "${BRANCH}"
             git reset --hard "origin/${BRANCH}"
 
-            echo "==> Rebuilding and restarting containers"
+            echo "==> Rebuilding and restarting containers using ${COMPOSE_FILE}"
             if docker compose version >/dev/null 2>&1; then
-              docker compose pull || true
-              docker compose build --pull
-              docker compose up -d --remove-orphans
+              docker compose -f "${COMPOSE_FILE}" pull || true
+              docker compose -f "${COMPOSE_FILE}" build --pull
+              docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
             else
-              docker-compose pull || true
-              docker-compose build --pull
-              docker-compose up -d --remove-orphans
+              docker-compose -f "${COMPOSE_FILE}" pull || true
+              docker-compose -f "${COMPOSE_FILE}" build --pull
+              docker-compose -f "${COMPOSE_FILE}" up -d --remove-orphans
             fi
 
             echo "==> Pruning unused images (safe-ish cleanup)"
@@ -77,7 +79,7 @@ pipeline {
               echo "Deploying branch '${env.BRANCH_NAME}' to ${isProd ? 'PRODUCTION' : 'STAGING'}: ${SERVER_NAME}:${APP_DIR}"
 
               ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${sshUser}@${SERVER_NAME}" \\
-                'BRANCH="${env.BRANCH_NAME}" APP_DIR="${APP_DIR}" bash -s' <<'REMOTE'
+                'BRANCH="${env.BRANCH_NAME}" APP_DIR="${APP_DIR}" COMPOSE_FILE="${composeFile}" bash -s' <<'REMOTE'
 ${remoteScript}
 REMOTE
             """
