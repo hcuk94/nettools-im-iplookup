@@ -33,7 +33,13 @@ pipeline {
         sh '''
           set -euo pipefail
           echo "==> Building Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
-          docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" -t "${IMAGE_NAME}:latest" .
+          docker build \
+            --build-arg http_proxy="${http_proxy:-}" \
+            --build-arg https_proxy="${https_proxy:-}" \
+            --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
+            --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            -t "${IMAGE_NAME}:latest" .
           echo "==> Saving image to tar"
           docker save "${IMAGE_NAME}:${IMAGE_TAG}" > "${IMAGE_NAME}-${IMAGE_TAG}.tar"
           ls -lh "${IMAGE_NAME}-${IMAGE_TAG}.tar"
