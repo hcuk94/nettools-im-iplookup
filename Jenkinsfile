@@ -9,8 +9,8 @@ pipeline {
   environment {
     SSH_USER = ''
     SSH_CRED_ID = 'ssh-key-cicduser'
-    PROD_SERVER_CRED = 'servername-app1'      // e.g. "prod.example.com"
-    PROD_APPDIR_CRED = 'deploypath-nettools-iplookup'          // e.g. "/opt/myapp"
+    PROD_SERVER_CRED = 'servername-app1'
+    PROD_APPDIR_CRED = 'deploypath-nettools-iplookup'
     STAGING_SERVER_CRED = 'servername-app1'
     STAGING_APPDIR_CRED = 'deploypath-nettools-iplookup-sg'
   }
@@ -32,86 +32,59 @@ pipeline {
       steps {
         script {
           def isProd = (env.BRANCH_NAME == 'main')
+          env.DEPLOY_COMPOSE_FILE = isProd ? 'docker-compose.yml' : 'docker-compose.staging.yml'
+          env.DEPLOY_TARGET = isProd ? 'PRODUCTION' : 'STAGING'
+        }
 
-          def serverCred = isProd ? env.PROD_SERVER_CRED : env.STAGING_SERVER_CRED
-          def appDirCred = isProd ? env.PROD_APPDIR_CRED : env.STAGING_APPDIR_CRED
-
-          // Compose file selection: staging uses docker-compose.staging.yml
-          def composeFile = isProd ? 'docker-compose.yml' : 'docker-compose.staging.yml'
-
-          // Compose command: try v2 ("docker compose") then fall back to v1 ("docker-compose")
-          // Use single-quoted string to prevent Groovy interpolation - these are bash variables
-          def remoteScript = '''
+        // Bind credentials to environment variables securely
+        withCredentials([
+          string(credentialsId: env.PROD_SERVER_CRED, variable: 'PROD_SERVER'),
+          string(credentialsId: env.PROD_APPDIR_CRED, variable: 'PROD_APPDIR'),
+          string(credentialsId: env.STAGING_SERVER_CRED, variable: 'STAGING_SERVER'),
+          string(credentialsId: env.STAGING_APPDIR_CRED, variable: 'STAGING_APPDIR'),
+          sshUserPrivateKey(credentialsId: env.SSH_CRED_ID, keyFileVariable: 'SSH_KEY_FILE', usernameVariable: 'SSH_USER_CRED')
+        ]) {
+          sh '''
             set -euo pipefail
 
-            cd "$APP_DIR"
-
-            echo "==> Pulling latest code for branch: $BRANCH"
-            # Ensure we're on the right branch and up to date
-            git fetch --prune
-            git checkout "$BRANCH"
-            git reset --hard "origin/$BRANCH"
-
-            echo "==> Rebuilding and restarting containers using $COMPOSE_FILE"
-            if docker compose version >/dev/null 2>&1; then
-              docker compose -f "$COMPOSE_FILE" pull || true
-              docker compose -f "$COMPOSE_FILE" build --pull
-              docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+            # Determine target based on branch
+            if [ "$BRANCH_NAME" = "main" ]; then
+              DEPLOY_SERVER="$PROD_SERVER"
+              DEPLOY_APPDIR="$PROD_APPDIR"
             else
-              docker-compose -f "$COMPOSE_FILE" pull || true
-              docker-compose -f "$COMPOSE_FILE" build --pull
-              docker-compose -f "$COMPOSE_FILE" up -d --remove-orphans
+              DEPLOY_SERVER="$STAGING_SERVER"
+              DEPLOY_APPDIR="$STAGING_APPDIR"
             fi
 
-            echo "==> Pruning unused images (safe-ish cleanup)"
-            docker image prune -f || true
-          '''
+            # Use SSH_USER from credential if available, otherwise fall back to env
+            SSH_USER_TO_USE="${SSH_USER_CRED:-$SSH_USER}"
 
-          withCredentials([
-            string(credentialsId: serverCred, variable: 'SERVER_NAME'),
-            string(credentialsId: appDirCred, variable: 'APP_DIR'),
-            sshUserPrivateKey(credentialsId: env.SSH_CRED_ID, keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER_FROM_CRED')
-          ]) {
-            // Prefer username from SSH credential if provided; else fall back to SSH_USER env var
-            def sshUser = (env.SSH_USER_FROM_CRED?.trim()) ? env.SSH_USER_FROM_CRED : env.SSH_USER
+            echo "==> Deploying branch '$BRANCH_NAME' to $DEPLOY_TARGET: $DEPLOY_SERVER:$DEPLOY_APPDIR"
 
-            // Export vars for the shell step using withEnv (avoids credential exposure warnings)
-            withEnv([
-              "DEPLOY_BRANCH=${env.BRANCH_NAME}",
-              "DEPLOY_APP_DIR=${env.APP_DIR}",
-              "DEPLOY_COMPOSE_FILE=${composeFile}",
-              "DEPLOY_SERVER=${env.SERVER_NAME}",
-              "DEPLOY_SSH_USER=${sshUser}",
-              "DEPLOY_SSH_KEY=${env.SSH_KEY}"
-            ]) {
-              sh '''
-                set -euo pipefail
-                echo "Deploying branch '${DEPLOY_BRANCH}' to ''' + (isProd ? 'PRODUCTION' : 'STAGING') + ''': ${DEPLOY_SERVER}:${DEPLOY_APP_DIR}"
-
-                ssh -i "${DEPLOY_SSH_KEY}" -o StrictHostKeyChecking=no "${DEPLOY_SSH_USER}@${DEPLOY_SERVER}" \
-                  'BRANCH="'"${DEPLOY_BRANCH}"'" APP_DIR="'"${DEPLOY_APP_DIR}"'" COMPOSE_FILE="'"${DEPLOY_COMPOSE_FILE}"'" bash -s' <<'REMOTE'
+            ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no "$SSH_USER_TO_USE@$DEPLOY_SERVER" <<REMOTE_EOF
 set -euo pipefail
-cd "$APP_DIR"
-echo "==> Pulling latest code for branch: $BRANCH"
+cd "$DEPLOY_APPDIR"
+
+echo "==> Pulling latest code for branch: $BRANCH_NAME"
 git fetch --prune
-git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
-echo "==> Rebuilding and restarting containers using $COMPOSE_FILE"
+git checkout "$BRANCH_NAME"
+git reset --hard "origin/$BRANCH_NAME"
+
+echo "==> Rebuilding and restarting containers using $DEPLOY_COMPOSE_FILE"
 if docker compose version >/dev/null 2>&1; then
-  docker compose -f "$COMPOSE_FILE" pull || true
-  docker compose -f "$COMPOSE_FILE" build --pull
-  docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+  docker compose -f "$DEPLOY_COMPOSE_FILE" pull || true
+  docker compose -f "$DEPLOY_COMPOSE_FILE" build --pull
+  docker compose -f "$DEPLOY_COMPOSE_FILE" up -d --remove-orphans
 else
-  docker-compose -f "$COMPOSE_FILE" pull || true
-  docker-compose -f "$COMPOSE_FILE" build --pull
-  docker-compose -f "$COMPOSE_FILE" up -d --remove-orphans
+  docker-compose -f "$DEPLOY_COMPOSE_FILE" pull || true
+  docker-compose -f "$DEPLOY_COMPOSE_FILE" build --pull
+  docker-compose -f "$DEPLOY_COMPOSE_FILE" up -d --remove-orphans
 fi
+
 echo "==> Pruning unused images (safe-ish cleanup)"
 docker image prune -f || true
-REMOTE
-              '''
-            }
-          }
+REMOTE_EOF
+          '''
         }
       }
     }
