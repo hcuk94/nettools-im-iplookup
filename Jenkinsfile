@@ -36,8 +36,8 @@ pipeline {
           docker build \
             --build-arg http_proxy="${http_proxy:-}" \
             --build-arg https_proxy="${https_proxy:-}" \
-            --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
-            --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
+            --build-arg HTTP_PROXY="${http_proxy:-}" \
+            --build-arg HTTPS_PROXY="${https_proxy:-}" \
             -t "${IMAGE_NAME}:${IMAGE_TAG}" \
             -t "${IMAGE_NAME}:latest" .
           echo "==> Saving image to tar"
