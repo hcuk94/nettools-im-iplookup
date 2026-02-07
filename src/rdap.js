@@ -1,11 +1,48 @@
+import { ProxyAgent } from 'undici';
+
+function parseNoProxy() {
+  const raw = process.env.NO_PROXY || process.env.no_proxy || '';
+  return raw
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function hostMatchesNoProxy(host, noProxyList) {
+  if (!host) return false;
+  return noProxyList.some(entry => {
+    if (entry === '*') return true;
+    if (entry.startsWith('.')) return host.endsWith(entry);
+    return host === entry;
+  });
+}
+
+function proxyForUrl(urlStr) {
+  const u = new URL(urlStr);
+  const noProxy = parseNoProxy();
+  if (hostMatchesNoProxy(u.hostname, noProxy)) return null;
+
+  if (u.protocol === 'https:') {
+    return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  if (u.protocol === 'http:') {
+    return process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  return null;
+}
+
 export async function fetchRdap({ ip, baseUrl, signal }) {
   const url = new URL(encodeURIComponent(ip), baseUrl).toString();
+  const proxy = proxyForUrl(url);
+  const dispatcher = proxy ? new ProxyAgent(proxy) : undefined;
+
   const res = await fetch(url, {
     method: 'GET',
     headers: {
       'accept': 'application/rdap+json, application/json;q=0.9, */*;q=0.1'
     },
-    signal
+    signal,
+    ...(dispatcher ? { dispatcher } : {})
   });
   const text = await res.text();
   let json = null;
