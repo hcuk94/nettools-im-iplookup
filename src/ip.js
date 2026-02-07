@@ -4,7 +4,14 @@ import { z } from 'zod';
 const ipSchema = z.string().ip();
 
 export function parseIp(ip) {
-  return ipSchema.parse(ip);
+  try {
+    return ipSchema.parse(ip);
+  } catch (e) {
+    const err = new Error('Invalid IP address. Expected IPv4 or IPv6.');
+    err.status = 400;
+    err.body = { code: 'invalid_ip' };
+    throw err;
+  }
 }
 
 function parseV4(ip) {
