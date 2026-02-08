@@ -32,11 +32,28 @@ app.use(
 app.use(morgan('combined'));
 
 const db = await openDb(cfg.SQLITE_PATH);
-const geoReaders = await openGeoIpReaders({
+let geoReaders = await openGeoIpReaders({
   dir: cfg.GEOIP_DB_DIR,
   cityMmdb: cfg.GEOIP_CITY_MMDB,
   asnMmdb: cfg.GEOIP_ASN_MMDB
 });
+
+async function ensureGeoReadersLoaded() {
+  // If the API started before the GeoLite2 DBs were present (e.g. updater downloads later),
+  // we would otherwise never load them until a restart.
+  if (geoReaders?.city && geoReaders?.asn) return;
+
+  const refreshed = await openGeoIpReaders({
+    dir: cfg.GEOIP_DB_DIR,
+    cityMmdb: cfg.GEOIP_CITY_MMDB,
+    asnMmdb: cfg.GEOIP_ASN_MMDB
+  });
+
+  // Only swap in if we gained at least one reader.
+  if ((refreshed?.city && !geoReaders?.city) || (refreshed?.asn && !geoReaders?.asn)) {
+    geoReaders = refreshed;
+  }
+}
 
 app.get('/health', (req, res) => {
   res.json({ ok: true });
@@ -111,6 +128,7 @@ app.get('/lookup', async (req, res, next) => {
     res.setHeader('X-RateLimit-Remaining', String(state2.remaining));
     res.setHeader('X-RateLimit-Reset', state2.day);
 
+    await ensureGeoReadersLoaded();
     const geo = lookupGeo({ readers: geoReaders, ip });
 
     res.json({
