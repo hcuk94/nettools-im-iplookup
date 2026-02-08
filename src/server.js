@@ -72,8 +72,10 @@ app.get('/lookup', async (req, res, next) => {
     if (ipClass.public) {
       const cached = await getRdapCacheOnly({ db, ip, ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS });
       if (cached.hit) {
+        // Cache hits don't count towards the daily limit.
         rdapResult = { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt };
       } else {
+        // Enforce rate limit for cache-misses (i.e. potentially hitting RDAP live)
         if (state.current >= state.limit) {
           res.status(429).json({
             error: 'rate_limited',
@@ -97,6 +99,20 @@ app.get('/lookup', async (req, res, next) => {
           await incrementRateLimit({ db, client, day: state.day });
         }
       }
+    } else {
+      // Non-public lookups still count towards the daily limit (so the API can't be
+      // bypassed by querying private/loopback ranges).
+      if (state.current >= state.limit) {
+        res.status(429).json({
+          error: 'rate_limited',
+          message: `Daily rate limit exceeded (${state.limit}/day).`,
+          limit: state.limit,
+          remaining: 0,
+          resetDay: state.day
+        });
+        return;
+      }
+      await incrementRateLimit({ db, client, day: state.day });
     }
 
     // Recompute state after potential increment
