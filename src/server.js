@@ -100,19 +100,9 @@ app.get('/lookup', async (req, res, next) => {
         }
       }
     } else {
-      // Non-public lookups still count towards the daily limit (so the API can't be
-      // bypassed by querying private/loopback ranges).
-      if (state.current >= state.limit) {
-        res.status(429).json({
-          error: 'rate_limited',
-          message: `Daily rate limit exceeded (${state.limit}/day).`,
-          limit: state.limit,
-          remaining: 0,
-          resetDay: state.day
-        });
-        return;
-      }
-      await incrementRateLimit({ db, client, day: state.day });
+      // Non-public IPs (RFC1918, loopback, ULA, etc.) don't hit RDAP.
+      // Treat these like cache hits: do not count them towards the daily limit.
+      // (The limit is primarily to protect external lookups.)
     }
 
     // Recompute state after potential increment
