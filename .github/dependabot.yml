@@ -3,6 +3,7 @@ updates:
   # Node dependencies
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
@@ -10,6 +11,7 @@ updates:
   # Base image updates for Dockerfile
   - package-ecosystem: "docker"
     directory: "/"
+    target-branch: "staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
