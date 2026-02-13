@@ -17,6 +17,10 @@ services:
       GEOIP_DB_DIR: ${GEOIP_DB_DIR:-/data/geoip}
       GEOIP_CITY_MMDB: ${GEOIP_CITY_MMDB:-GeoLite2-City.mmdb}
       GEOIP_ASN_MMDB: ${GEOIP_ASN_MMDB:-GeoLite2-ASN.mmdb}
+      # Proxy support for outbound RDAP requests (and any other outbound HTTP)
+      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
     volumes:
       - ./data:/data
     restart: unless-stopped

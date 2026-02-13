@@ -87,10 +87,19 @@ pipeline {
               "${SSH_USER_TO_USE}@${DEPLOY_SERVER}:${DEPLOY_APPDIR}/"
 
             # Deploy on remote server
+            # Pass Jenkins proxy env through so docker compose can inject it into containers.
             ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no \
               "${SSH_USER_TO_USE}@${DEPLOY_SERVER}" <<EOF
 set -euo pipefail
 cd "$DEPLOY_APPDIR"
+
+# Proxy passthrough for runtime (RDAP live lookups etc.)
+export http_proxy="${http_proxy:-}"
+export https_proxy="${https_proxy:-}"
+export HTTP_PROXY="${http_proxy:-}"
+export HTTPS_PROXY="${https_proxy:-}"
+export no_proxy="${no_proxy:-}"
+export NO_PROXY="${no_proxy:-}"
 
 echo "==> Loading Docker image"
 docker load < "${IMAGE_NAME}-${IMAGE_TAG}.tar"
