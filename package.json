@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development node --watch src/server.js",
+    "test": "node --test",
     "geoip:update": "node scripts/update-maxmind.js",
     "geoip:update:loop": "node scripts/update-maxmind.js --loop",
     "lint": "eslint .",
