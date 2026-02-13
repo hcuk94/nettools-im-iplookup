@@ -7,9 +7,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development node --watch src/server.js",
+    "test": "node --test",
     "geoip:update": "node scripts/update-maxmind.js",
     "geoip:update:loop": "node scripts/update-maxmind.js --loop",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -22,7 +24,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "eslint": "^9.5.0",
+    "eslint": "^10.0.0",
     "globals": "^15.3.0"
   }
 }

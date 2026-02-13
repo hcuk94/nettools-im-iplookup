@@ -10,6 +10,7 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 COPY scripts ./scripts
+COPY tests ./tests
 
 ENV NODE_ENV=production \
     PORT=3000 \

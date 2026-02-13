@@ -117,6 +117,47 @@ EOF
         }
       }
     }
+
+    stage('Post-deploy API tests') {
+      when {
+        anyOf {
+          branch 'main'
+          branch 'staging'
+        }
+      }
+      steps {
+        script {
+          // Public endpoints (Jenkins has network access; no need to exec tests on the app hosts)
+          env.TEST_BASE_URL = (env.BRANCH_NAME == 'main')
+            ? 'https://api-iplookup.nettools.im'
+            : 'https://api-iplookup-sg.nettools.im'
+        }
+        sh '''
+          set -euo pipefail
+          echo "==> Running API tests from Jenkins against ${TEST_BASE_URL}"
+
+          # Run tests using the *built application image* to avoid relying on workspace volume mounts
+          # (the Jenkins agent may itself be a container, making -v $PWD unreliable).
+          # Ensure container trusts the same CA bundle as the Jenkins Docker host.
+          # Corporate/root CAs are commonly installed into the host bundle at:
+          #   /etc/ssl/certs/ca-certificates.crt
+          # Mounting /etc/ssl/certs also covers hashed cert directories.
+          docker run --rm \
+            -e BASE_URL="${TEST_BASE_URL}" \
+            -e http_proxy="${http_proxy:-}" \
+            -e https_proxy="${https_proxy:-}" \
+            -e HTTP_PROXY="${http_proxy:-}" \
+            -e HTTPS_PROXY="${https_proxy:-}" \
+            -e no_proxy="${no_proxy:-}" \
+            -e NO_PROXY="${no_proxy:-}" \
+            -v /etc/ssl/certs:/etc/ssl/certs:ro \
+            -e SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+            -e NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+            "${IMAGE_NAME}:${IMAGE_TAG}" \
+            node --test tests/*.test.js
+        '''
+      }
+    }
   }
 
   post {
