@@ -86,7 +86,7 @@ pipeline {
               "${IMAGE_NAME}-${IMAGE_TAG}.tar" \
               "${SSH_USER_TO_USE}@${DEPLOY_SERVER}:${DEPLOY_APPDIR}/"
 
-            # Deploy on remote server
+            # Deploy + post-deploy tests on remote server
             ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no \
               "${SSH_USER_TO_USE}@${DEPLOY_SERVER}" <<EOF
 set -euo pipefail
@@ -109,6 +109,22 @@ if docker compose version >/dev/null 2>&1; then
 else
   docker-compose -f "$DEPLOY_COMPOSE_FILE" up -d --remove-orphans
 fi
+
+# Run post-deploy API tests against the deployed service.
+# We run them via a one-shot Node container so we don't depend on Node being installed on the server.
+# Tests are in-repo (pulled above) and only hit the local HTTP API.
+echo "==> Running post-deploy API tests"
+PORT_VAL=$(grep -E '^PORT=' .env 2>/dev/null | tail -n1 | cut -d= -f2 || true)
+PORT_VAL=${PORT_VAL:-3000}
+BASE_URL="http://127.0.0.1:${PORT_VAL}"
+
+docker run --rm \
+  --network host \
+  -e BASE_URL="$BASE_URL" \
+  -v "$DEPLOY_APPDIR:/work" \
+  -w /work \
+  node:25-alpine \
+  node --test tests
 
 echo "==> Cleaning up old images"
 docker image prune -f || true
