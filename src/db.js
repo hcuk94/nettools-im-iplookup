@@ -1,13 +1,33 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { DatabaseSync } from 'node:sqlite';
+
+// Minimal async-compatible wrapper around the synchronous node:sqlite API.
+function wrapDb(db) {
+  return {
+    exec(sql) {
+      db.exec(sql);
+    },
+
+    async get(sql, ...params) {
+      const stmt = db.prepare(sql);
+      return stmt.get(...params);
+    },
+
+    async run(sql, ...params) {
+      const stmt = db.prepare(sql);
+      return stmt.run(...params);
+    },
+
+    close() {
+      db.close();
+    }
+  };
+}
 
 export async function openDb(sqlitePath) {
-  const db = await open({
-    filename: sqlitePath,
-    driver: sqlite3.Database
-  });
+  const raw = new DatabaseSync(sqlitePath);
+  const db = wrapDb(raw);
 
-  await db.exec(`
+  db.exec(`
     PRAGMA journal_mode=WAL;
     PRAGMA synchronous=NORMAL;
 
