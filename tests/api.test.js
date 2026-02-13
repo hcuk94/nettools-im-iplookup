@@ -4,9 +4,53 @@ import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 let BASE_URL = process.env.BASE_URL;
 let child;
+
+function parseNoProxy() {
+  const raw = process.env.NO_PROXY || process.env.no_proxy || '';
+  return raw
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function hostMatchesNoProxy(host, noProxyList) {
+  if (!host) return false;
+  return noProxyList.some(entry => {
+    if (entry === '*') return true;
+    if (entry.startsWith('.')) return host.endsWith(entry);
+    return host === entry;
+  });
+}
+
+function proxyForUrl(urlStr) {
+  const u = new URL(urlStr);
+  const noProxy = parseNoProxy();
+  if (hostMatchesNoProxy(u.hostname, noProxy)) return null;
+
+  // Prefer protocol-specific proxy envs.
+  if (u.protocol === 'https:') {
+    return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  if (u.protocol === 'http:') {
+    return process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  return null;
+}
+
+// IMPORTANT: Node/undici fetch does NOT automatically honour HTTP(S)_PROXY env vars.
+// Configure a global dispatcher so our Jenkins post-deploy tests work behind the proxy.
+function configureProxyDispatcher() {
+  const base = BASE_URL || 'http://127.0.0.1';
+  const proxy = proxyForUrl(base);
+  if (!proxy) return;
+  setGlobalDispatcher(new ProxyAgent(proxy));
+}
+
+configureProxyDispatcher();
 
 async function getJson(path, { headers } = {}) {
   const res = await fetch(`${BASE_URL}${path}`, { headers });
