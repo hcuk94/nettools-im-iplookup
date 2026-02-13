@@ -117,6 +117,39 @@ EOF
         }
       }
     }
+
+    stage('Post-deploy API tests') {
+      when {
+        anyOf {
+          branch 'main'
+          branch 'staging'
+        }
+      }
+      steps {
+        withCredentials([
+          string(credentialsId: env.PROD_SERVER_CRED, variable: 'PROD_SERVER'),
+          string(credentialsId: env.STAGING_SERVER_CRED, variable: 'STAGING_SERVER')
+        ]) {
+          script {
+            env.TARGET_SERVER = (env.BRANCH_NAME == 'main') ? env.PROD_SERVER : env.STAGING_SERVER
+          }
+          sh '''
+            set -euo pipefail
+
+            BASE_URL="http://${TARGET_SERVER}:3000"
+            echo "==> Running smoke/unit tests against ${BASE_URL}"
+
+            # Run tests in a clean Node container (keeps Jenkins agents slim)
+            docker run --rm \
+              -e IPLOOKUP_BASE_URL="$BASE_URL" \
+              -v "$PWD":/app \
+              -w /app \
+              node:22-alpine \
+              sh -lc "npm ci && npm test"
+          '''
+        }
+      }
+    }
   }
 
   post {
