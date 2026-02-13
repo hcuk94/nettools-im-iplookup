@@ -140,6 +140,12 @@ EOF
           # (the Jenkins agent may itself be a container, making -v $PWD unreliable).
           docker run --rm \
             -e BASE_URL="${TEST_BASE_URL}" \
+            -e http_proxy="${http_proxy:-}" \
+            -e https_proxy="${https_proxy:-}" \
+            -e HTTP_PROXY="${http_proxy:-}" \
+            -e HTTPS_PROXY="${https_proxy:-}" \
+            -e no_proxy="${no_proxy:-}" \
+            -e NO_PROXY="${no_proxy:-}" \
             "${IMAGE_NAME}:${IMAGE_TAG}" \
             node --test tests/*.test.js
         '''
