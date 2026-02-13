@@ -136,12 +136,11 @@ EOF
           set -euo pipefail
           echo "==> Running API tests from Jenkins against ${TEST_BASE_URL}"
 
-          # Run tests in a one-shot Node container (no need for Node on the Jenkins agent)
+          # Run tests using the *built application image* to avoid relying on workspace volume mounts
+          # (the Jenkins agent may itself be a container, making -v $PWD unreliable).
           docker run --rm \
             -e BASE_URL="${TEST_BASE_URL}" \
-            -v "$PWD:/work" \
-            -w /work \
-            node:25-alpine \
+            "${IMAGE_NAME}:${IMAGE_TAG}" \
             node --test tests/*.test.js
         '''
       }
