@@ -126,28 +126,24 @@ EOF
         }
       }
       steps {
-        withCredentials([
-          string(credentialsId: env.PROD_SERVER_CRED, variable: 'PROD_SERVER'),
-          string(credentialsId: env.STAGING_SERVER_CRED, variable: 'STAGING_SERVER')
-        ]) {
-          script {
-            env.TEST_BASE_URL = (env.BRANCH_NAME == 'main')
-              ? "http://${env.PROD_SERVER}:3000"
-              : "http://${env.STAGING_SERVER}:3000"
-          }
-          sh '''
-            set -euo pipefail
-            echo "==> Running API tests from Jenkins against ${TEST_BASE_URL}"
-
-            # Run tests in a one-shot Node container (no need for Node on the Jenkins agent)
-            docker run --rm \
-              -e BASE_URL="${TEST_BASE_URL}" \
-              -v "$PWD:/work" \
-              -w /work \
-              node:25-alpine \
-              node --test tests/*.test.js
-          '''
+        script {
+          // Public endpoints (Jenkins has network access; no need to exec tests on the app hosts)
+          env.TEST_BASE_URL = (env.BRANCH_NAME == 'main')
+            ? 'https://api-iplookup.nettools.im'
+            : 'https://api-iplookup-sg.nettools.im'
         }
+        sh '''
+          set -euo pipefail
+          echo "==> Running API tests from Jenkins against ${TEST_BASE_URL}"
+
+          # Run tests in a one-shot Node container (no need for Node on the Jenkins agent)
+          docker run --rm \
+            -e BASE_URL="${TEST_BASE_URL}" \
+            -v "$PWD:/work" \
+            -w /work \
+            node:25-alpine \
+            node --test tests/*.test.js
+        '''
       }
     }
   }
