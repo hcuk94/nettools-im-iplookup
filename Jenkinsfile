@@ -138,6 +138,10 @@ EOF
 
           # Run tests using the *built application image* to avoid relying on workspace volume mounts
           # (the Jenkins agent may itself be a container, making -v $PWD unreliable).
+          # Ensure container trusts the same CA bundle as the Jenkins Docker host.
+          # Corporate/root CAs are commonly installed into the host bundle at:
+          #   /etc/ssl/certs/ca-certificates.crt
+          # Mounting /etc/ssl/certs also covers hashed cert directories.
           docker run --rm \
             -e BASE_URL="${TEST_BASE_URL}" \
             -e http_proxy="${http_proxy:-}" \
@@ -146,6 +150,9 @@ EOF
             -e HTTPS_PROXY="${https_proxy:-}" \
             -e no_proxy="${no_proxy:-}" \
             -e NO_PROXY="${no_proxy:-}" \
+            -v /etc/ssl/certs:/etc/ssl/certs:ro \
+            -e SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+            -e NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
             "${IMAGE_NAME}:${IMAGE_TAG}" \
             node --test tests/*.test.js
         '''
