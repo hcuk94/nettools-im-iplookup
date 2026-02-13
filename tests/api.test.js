@@ -98,6 +98,20 @@ test('GET /lookup for private IP skips RDAP (deterministic)', async () => {
   assert.equal(json.rdapSource, 'skipped');
 });
 
+test('GET /lookup for a real public IP returns RDAP', async () => {
+  const ip = '1.1.1.1';
+  const { res, json, text } = await getJson(`/lookup?ip=${encodeURIComponent(ip)}`);
+  assert.equal(res.status, 200, text);
+
+  assert.equal(json.ip, ip);
+  assert.ok(json.ipClassification);
+  assert.equal(json.ipClassification.public, true);
+
+  // For public IPs we expect RDAP to be present (cache or live)
+  assert.ok(json.rdap && typeof json.rdap === 'object');
+  assert.ok(['cache', 'live'].includes(json.rdapSource), `rdapSource=${json.rdapSource}`);
+});
+
 test('GET /lookup rejects invalid ip with 400', async () => {
   const { res, json } = await getJson('/lookup?ip=not-an-ip');
   assert.equal(res.status, 400);
