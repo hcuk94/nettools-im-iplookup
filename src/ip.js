@@ -1,12 +1,15 @@
 import { z } from 'zod';
+import net from 'node:net';
 
-// Basic IP validation for both v4 and v6.
-const ipSchema = z.string().ip();
+// Zod v4 removed/changed some string helpers (e.g. `.ip()`), so we validate using Node's net.isIP.
+const ipSchema = z.string().refine((s) => net.isIP(s) !== 0, {
+  message: 'Invalid IP address. Expected IPv4 or IPv6.'
+});
 
 export function parseIp(ip) {
   try {
     return ipSchema.parse(ip);
-  } catch (e) {
+  } catch {
     const err = new Error('Invalid IP address. Expected IPv4 or IPv6.');
     err.status = 400;
     err.body = { code: 'invalid_ip' };

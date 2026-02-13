@@ -7,7 +7,6 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development node --watch src/server.js",
-    "test": "node --test",
     "geoip:update": "node scripts/update-maxmind.js",
     "geoip:update:loop": "node scripts/update-maxmind.js --loop",
     "lint": "eslint .",
@@ -15,16 +14,16 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "maxmind": "^4.0.0",
+    "express": "^5.2.1",
+    "maxmind": "^5.0.5",
     "morgan": "^1.10.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
-    "undici": "^6.19.8",
-    "zod": "^3.23.8"
+    "undici": "^7.21.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "eslint": "^10.0.0",
-    "globals": "^15.3.0"
+    "globals": "^17.3.0"
   }
 }
