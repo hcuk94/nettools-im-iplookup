@@ -10,7 +10,8 @@
     "test": "node --test",
     "geoip:update": "node scripts/update-maxmind.js",
     "geoip:update:loop": "node scripts/update-maxmind.js --loop",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

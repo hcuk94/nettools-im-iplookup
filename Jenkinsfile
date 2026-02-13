@@ -126,28 +126,24 @@ EOF
         }
       }
       steps {
-        withCredentials([
-          string(credentialsId: env.PROD_SERVER_CRED, variable: 'PROD_SERVER'),
-          string(credentialsId: env.STAGING_SERVER_CRED, variable: 'STAGING_SERVER')
-        ]) {
-          script {
-            env.TARGET_SERVER = (env.BRANCH_NAME == 'main') ? env.PROD_SERVER : env.STAGING_SERVER
-          }
-          sh '''
-            set -euo pipefail
-
-            BASE_URL="http://${TARGET_SERVER}:3000"
-            echo "==> Running smoke/unit tests against ${BASE_URL}"
-
-            # Run tests in a clean Node container (keeps Jenkins agents slim)
-            docker run --rm \
-              -e IPLOOKUP_BASE_URL="$BASE_URL" \
-              -v "$PWD":/app \
-              -w /app \
-              node:22-alpine \
-              sh -lc "npm ci && npm test"
-          '''
+        script {
+          // Public endpoints (Jenkins has network access; no need to exec tests on the app hosts)
+          env.TEST_BASE_URL = (env.BRANCH_NAME == 'main')
+            ? 'https://api-iplookup.nettools.im'
+            : 'https://api-iplookup-sg.nettools.im'
         }
+        sh '''
+          set -euo pipefail
+          echo "==> Running API tests from Jenkins against ${TEST_BASE_URL}"
+
+          # Run tests in a one-shot Node container (no need for Node on the Jenkins agent)
+          docker run --rm \
+            -e BASE_URL="${TEST_BASE_URL}" \
+            -v "$PWD:/work" \
+            -w /work \
+            node:25-alpine \
+            node --test tests/*.test.js
+        '''
       }
     }
   }
