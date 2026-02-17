@@ -108,7 +108,7 @@ app.get('/lookup', async (req, res, next) => {
           db,
           ip,
           ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS,
-          baseUrl: cfg.RDAP_BASE_URL
+          baseUrl: cfg.RDAP_BASE_URL || undefined
         });
 
         // Only count against rate limit when we actually hit RDAP live.
