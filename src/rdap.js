@@ -99,7 +99,7 @@ export async function getRdapCacheOnly({ db, ip, ttlSeconds, nowMs = Date.now() 
 export async function getRdapCached({ db, ip, ttlSeconds, baseUrl, nowMs = Date.now() }) {
   const cached = await getRdapCacheOnly({ db, ip, ttlSeconds, nowMs });
   if (cached.hit) {
-    return { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt };
+    return { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt, resolved: null };
   }
 
   // Resolve the correct RDAP registry endpoint via IANA bootstrap.
@@ -118,11 +118,12 @@ export async function getRdapCached({ db, ip, ttlSeconds, baseUrl, nowMs = Date.
   const rdap = await fetchRdap({ ip, baseUrl: resolvedBaseUrl });
 
   const fetchedAt = nowMs;
+  const resolved = { baseUrl: resolvedBaseUrl };
   await db.run(
     'INSERT INTO rdap_cache(ip, response_json, fetched_at) VALUES(?,?,?) ON CONFLICT(ip) DO UPDATE SET response_json=excluded.response_json, fetched_at=excluded.fetched_at',
     ip,
     JSON.stringify(rdap),
     fetchedAt
   );
-  return { source: 'live', rdap, fetchedAt };
+  return { source: 'live', rdap, fetchedAt, resolved };
 }

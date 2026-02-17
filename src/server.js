@@ -84,13 +84,13 @@ app.get('/lookup', async (req, res, next) => {
     const client = req.ip || 'unknown';
     const state = await getRateLimitState({ db, client, limit: cfg.RATE_LIMIT_DAILY });
 
-    let rdapResult = { source: 'skipped', rdap: null, fetchedAt: null };
+    let rdapResult = { source: 'skipped', rdap: null, fetchedAt: null, resolved: null };
 
     if (ipClass.public) {
       const cached = await getRdapCacheOnly({ db, ip, ttlSeconds: cfg.RDAP_CACHE_TTL_SECONDS });
       if (cached.hit) {
         // Cache hits don't count towards the daily limit.
-        rdapResult = { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt };
+        rdapResult = { source: 'cache', rdap: cached.rdap, fetchedAt: cached.fetchedAt, resolved: null };
       } else {
         // Enforce rate limit for cache-misses (i.e. potentially hitting RDAP live)
         if (state.current >= state.limit) {
@@ -143,6 +143,7 @@ app.get('/lookup', async (req, res, next) => {
       rdap: rdapResult.rdap,
       rdapSource: rdapResult.source,
       rdapFetchedAt: rdapResult.fetchedAt,
+      rdapResolvedBaseUrl: rdapResult?.resolved?.baseUrl || null,
       geo,
       maxmind: {
         cityDbPath: geoReaders.paths.cityPath,
