@@ -13,7 +13,11 @@ const schema = z.object({
   // RDAP caching
   SQLITE_PATH: z.string().default('/data/app.sqlite'),
   RDAP_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
-  RDAP_BASE_URL: z.string().default('https://rdap.org/ip/'),
+
+  // Optional override. Default behaviour is to use IANA RDAP bootstrap and query
+  // the correct registry (ARIN/RIPE/APNIC/LACNIC/AFRINIC) directly.
+  // If you set RDAP_BASE_URL, it must end with a trailing slash.
+  RDAP_BASE_URL: z.string().default(''),
 
   // Rate limit
   RATE_LIMIT_DAILY: z.coerce.number().int().positive().default(24),
