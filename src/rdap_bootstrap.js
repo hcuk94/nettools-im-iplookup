@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { ProxyAgent } from 'undici';
 
 // IANA RDAP bootstrap data
 // Ref: https://data.iana.org/rdap/
@@ -14,11 +15,69 @@ function isFresh(cache, ttlMs) {
   return cache.data && (Date.now() - cache.fetchedAtMs) < ttlMs;
 }
 
-async function fetchBootstrap(url) {
-  const res = await fetch(url, {
-    headers: { accept: 'application/json' }
+function parseNoProxy() {
+  const raw = process.env.NO_PROXY || process.env.no_proxy || '';
+  return raw
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function hostMatchesNoProxy(host, noProxyList) {
+  if (!host) return false;
+  return noProxyList.some(entry => {
+    if (entry === '*') return true;
+    if (entry.startsWith('.')) return host.endsWith(entry);
+    return host === entry;
   });
-  if (!res.ok) throw new Error(`IANA bootstrap fetch failed (${res.status})`);
+}
+
+function proxyForUrl(urlStr) {
+  const u = new URL(urlStr);
+  const noProxy = parseNoProxy();
+  if (hostMatchesNoProxy(u.hostname, noProxy)) return null;
+
+  if (u.protocol === 'https:') {
+    return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  if (u.protocol === 'http:') {
+    return process.env.HTTP_PROXY || process.env.http_proxy || null;
+  }
+  return null;
+}
+
+async function fetchBootstrap(url) {
+  const proxy = proxyForUrl(url);
+  const dispatcher = proxy ? new ProxyAgent(proxy) : undefined;
+
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { accept: 'application/json' },
+      ...(dispatcher ? { dispatcher } : {})
+    });
+  } catch (e) {
+    const err = new Error('RDAP bootstrap fetch failed');
+    err.status = 502;
+    err.body = {
+      code: 'rdap_bootstrap_fetch_failed',
+      url,
+      cause: String(e?.cause?.message || e?.message || e)
+    };
+    throw err;
+  }
+
+  if (!res.ok) {
+    const err = new Error(`RDAP bootstrap fetch failed (${res.status})`);
+    err.status = 502;
+    err.body = {
+      code: 'rdap_bootstrap_http_error',
+      url,
+      status: res.status
+    };
+    throw err;
+  }
+
   return await res.json();
 }
 
